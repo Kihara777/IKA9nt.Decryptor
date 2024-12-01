@@ -10,7 +10,7 @@ Simple patch to inject a interctive console, mainly for AIdealRays, might suppor
 - run "help", and you know how it works.
 > [!NOTE]  
 > Though we've decide to let it go, we still generate the AREK.txt during the decrypt process anyway.
-> Check [Work Folder Structure](###Work-Folder-Structure) for more info.
+> Check [AREK.txt Regex](###AREK.txt-Regex) for more info.
 
 ## Build
 - Follow the instructions on [Melonloader Wiki](https://melonwiki.xyz/#/modders/quickstart?id=visual-studio-template) and setup your build environment.
@@ -28,15 +28,17 @@ Simple Unity editor script to decrypt ```IKA9nt.Encrypter (SeekableAesStream 256
 - Copy the encrypted bundle and AREK.txt to this folder.
 - Click ```IKA9nt => Decryptor``` to start the decrypt process.
 ### Work Folder Structure
-```[Applation.persistentDataPath]/
+```
+[Applation.persistentDataPath]/
 ├── Decryptor
 │   ├── decryptedBundle
+│   └── ... 
 └── Encrypter
-    ├── 6241053  // Enccrypted bundle
+    ├── 6241053  // Enccrypted bundles
+    ├── ...
     └── AREK.txt
-
-AREK.txt Regex:
-"(\S+) (\S+) (\S+)\n"```
+```
+### AREK.txt Regex: ```"(\S+) (\S+) (\S+)\n"```
 - $1 bundleLabel
 - $2 bundlePassword
 - $3 bundleHash
