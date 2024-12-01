@@ -28,8 +28,7 @@ Simple Unity editor script to decrypt IKA9nt (SeekableAesStream) bundles.
 - Copy the encrypted bundle and AREK.txt to this folder.
 - Click ```IKA9nt => Decryptor``` to start the decrypt process.
 ### Work Folder Structure
-```
-[Applation.persistentDataPath]/
+```[Applation.persistentDataPath]/
 ├── Decryptor
 │   ├── decryptedBundle
 └── Encrypter
@@ -37,8 +36,7 @@ Simple Unity editor script to decrypt IKA9nt (SeekableAesStream) bundles.
     └── AREK.txt
 
 AREK.txt Regex:
-"(\S+) (\S+) (\S+)\n"
-```
+"(\S+) (\S+) (\S+)\n"```
 - $1 bundleLabel
 - $2 bundlePassword
 - $3 bundleHash
