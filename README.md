@@ -3,22 +3,24 @@ Simple patch to inject a interctive console.
 - Let the game decrypt bundles itself!
 - Change screen resolution, refresh rate and V-Sync.
 
-## Requirements
-- [MelonLoader](https://github.com/LavaGang/MelonLoader) v0.6+(IL2CPP)
-- MelonMod VSIX templates
-- VisualStudio 2022
-- [.NET 6.0 SDK](https://dotnet.microsoft.com/download/dotnet/6.0)
+## Use the Mod
+- Dodnload [MelonLoader](https://github.com/LavaGang/MelonLoader) v0.6+(IL2CPP) from releases and install it to your game directory by following its instructions.
+- Copy ```IKA9ntDecryptor.dll``` to the MelonLoader's ```Mods``` folder.
+- Run the game, the console shold appear when mod initialized.
+- run "help", and you know how it works.
+> [!NOTE]  
+> Though we've decide to let it go, we still generate the AREK.txt during the decryupt process anyway.
+> Check [Work Folder Structure](###Work-Folder-Structure) for more info.
 
 ## Build
 - Follow the instructions on [Melonloader Wiki](https://melonwiki.xyz/#/modders/quickstart?id=visual-studio-template) and setup your build environment.
 - Add the source codes in [MelonMod](MelonMod) folder to your project.
-- Build the solution and run the game, the console shold appear when mod initialized.
-- run "help", and you know how it works.
+- Build the solution.
 
 ## Editor Plugin(DEPRECATED)
 Simple Unity editor script to decrypt IKA9nt (SeekableAesStream) bundles.
 ### Requirements
-- Original IKA9nt.Encrypter from AssetStore. or SeekableAesStream class only.
+- ```SeekableAesStream``` class (included).
 - Unity Editor
 ### Uue the Plugin
 - Copy the [Editor](Editor) folder to you unity project.
