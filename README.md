@@ -39,6 +39,6 @@ Simple Unity editor script to decrypt IKA9nt (SeekableAesStream) bundles.
 AREK.txt Regex:
 "(\S+) (\S+) (\S+)\n"
 ```
-$1 bundleLabel
-$2 bundlePassword
-$3 bundleHash
+- $1 bundleLabel
+- $2 bundlePassword
+- $3 bundleHash
