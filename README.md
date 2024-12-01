@@ -1,5 +1,5 @@
 # IKA9nt.Decryptor
-Simple patch to inject a interctive console.
+Simple patch to inject a interctive console, mainly for AIdealRays, might support other ```IKA9nt.Encrypter``` games(theoretically, not tested however).
 - Let the game decrypt bundles itself!
 - Change screen resolution, refresh rate and V-Sync.
 
