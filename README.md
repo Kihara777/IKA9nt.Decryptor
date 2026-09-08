@@ -17,6 +17,18 @@ Simple patch to inject a interctive console, mainly for AIdealRays, might suppor
 - Add the source files in [MelonMod](MelonMod) folder to your project.
 - Build the solution.
 
+## AIdealRays v2.1+ support
+`MelonMod` now works on both v1.9 and v2.1+ (`AIdealRays Ver_2.1` verified: 7/7 bundles decrypt to valid `UnityFS` files; the 8th label has no source file in `StreamingAssets`).
+### What changed in v2.1
+- `PasswordMap.map` went from **static** to an **instance** property behind `EncrypterCore.passwordMap`.
+- `map` values are **no longer the passwords** - they are raw material. The true password must be derived per label via the (private static) `EncrypterCore.GetPasswordFromMap(out password, label)`, which maps characters through a 195-char alphabet (`PasswordMap.Substring(i)` / `PasswordCharacterSubstring(i)`: `0-9a-zA-Z` + hiragana + katakana + halfwidth katakana).
+- The salt comes from the (private static) `EncrypterCore.GetSalt(label)` (in practice: UTF-8 bytes of the hash).
+- The `SeekableAesStream` cipher itself is unchanged, so the game's own stream class is reused as-is.
+### How the patch works (`MelonMod/Decrypt.cs`)
+- Version-dependent members are resolved via reflection, so the file compiles against both v1.9 and v2.1 unhollowed assemblies: instance map first, static map as fallback; `GetPasswordFromMap` with raw-value fallback; `GetSalt` with `UTF8(hash)` fallback.
+- All derivation runs up-front on the calling thread; worker tasks only touch the same stream surface v1.9 already used.
+- `AREK.txt` now stores the **true** passwords, so the Editor flow keeps working unchanged.
+
 ## Editor Plugin(DEPRECATED)
 Simple Unity editor script to decrypt ```IKA9nt.Encrypter (SeekableAesStream 256)``` bundles.
 ### Requirements
