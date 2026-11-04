@@ -250,6 +250,21 @@ v2.1 改了什么：
 **这也是静态工具能工作的原因**：`ika9nt-unlock.mjs` 从一开始走的就是「从 `Substring` 立即数反推密码」这条路，
 那正是 v2.1 的机制，只是当时不知道它叫 v2.1。
 
+## 多语言
+
+进度输出按运行环境自动选语言：`--lang` > `IKA9NT_LANG` > 系统 `LC_ALL`/`LC_MESSAGES`/`LANG` > 英文。
+
+```bash
+node ika9nt-unlock.mjs unlock --game ./GameDir --lang ja
+IKA9NT_LANG=zh node ika9nt-unlock.mjs scan --game ./GameDir
+LANG=ja_JP.UTF-8 node ika9nt-unlock.mjs unlock --game ./GameDir
+```
+
+支持 `zh` / `en` / `ja`。**只翻译给人看的进度输出**——JSON、字段名、路径、错误码一律不译，
+所以脚本解析输出时不受语言影响。
+
+没有明确语言时用英文，不猜。
+
 ## 目录
 
 ```

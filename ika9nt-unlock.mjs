@@ -34,6 +34,120 @@ const POOL_MIN = 150, POOL_MAX = 3000
 const SUBSTRING_MAX_SPAN = 0x10000 // 64 KB：Substring 的调用点挤在一个函数里，别的不行
 const ARRAY_NEW = '0x180202df0'    // 只在 --emit-blocks 内部用，见 detectSubstring
 
+// ── 零、多语言 ──────────────────────────────────────────────────────────────
+//
+// 语言按运行环境自动识别，顺序：`--lang` > `IKA9NT_LANG` > 系统 locale > 英文。
+// 只翻译给人看的进度输出；JSON、字段名、路径、错误码一律不译。
+
+const MESSAGES = {
+  zh: {
+    game: '游戏',
+    sa: 'StreamingAssets',
+    out: '输出',
+    step1: (n) => `  [1/4] passCharacter len=${n}`,
+    step2: (n) => `  [2/4] 从 data.unity3d 提出 resources.assets (${n})`,
+    step3: (g, n) => `  [3/4] GUID ${g}，${n} 个 label`,
+    step3b: (t, c, sp, n) => `  [3/4] Substring=${t}（${c} 次，跨度 0x${sp}），切成 ${n} 组`,
+    step3arek: (f, n) => `  [3/4] 从 ${f} 读到 ${n} 个密码（跳过反汇编）`,
+    ok: (h, label, n, how) => `  ✓ ${h}${label ? ` [${label}]` : ''} → ${n} 字节${how === 'trial' ? '（试错匹配）' : ''}`,
+    skip: (h) => `  ✗ ${h} 没有密码能解出 UnityFS 头`,
+    done: (ok, skip) => `\n[4/4] 解出 ${ok}，跳过 ${skip}。`,
+    arekOut: (f, n) => `  AREK.txt 已写到 ${f}（${n} 条，含明文密码）`,
+    skipNote: '\n跳过说明：判据是解出来的头必须是 `UnityFS`，解错会跳过而不是产出垃圾。',
+    noneOk: '一个都没解出来，可能是加密器版本变了（例如 salt 不再等于文件名）。',
+    noneOk2: '用仓库 README 里「新旧加密包的对照」一节比对，或到仓库开 issue 附上游戏名与版本。',
+    arekStale: '  提示：AREK.txt 里的密码是版本相关的；如果来自别的版本，这里会全部解不出来。',
+    noSA: '找不到 StreamingAssets/StandaloneWindows64',
+    noMD: '找不到 global-metadata.dat',
+    noAssets: '找不到 resources.assets 也没有 data.unity3d',
+    noGA: '找不到 GameAssembly.dll',
+    usage: '用法：',
+    usageScan: '  node ika9nt-unlock.mjs scan   --game <游戏目录>',
+    usageUnlock: '  node ika9nt-unlock.mjs unlock --game <游戏目录> [--out <输出>] [--sa <StreamingAssets>] [--arek-in <路径>] [--arek-out <路径>]',
+    scanHead: (g) => `游戏目录: ${g}`,
+    scanFound: (md, ga, as) => `  metadata: ${md ? '✓' : '✗'}  GameAssembly: ${ga ? '✓' : '✗'}  resources.assets: ${as ? '✓' : '✗（需先 unpack）'}`,
+    scanPool: (c, n) => `  passCharacter: 候选 ${c}，选中 len=${n}`,
+    scanGuid: (g) => `  GUID: ${g}`,
+    apiHint: '见 README「原理」一节',
+  },
+  en: {
+    game: 'game',
+    sa: 'StreamingAssets',
+    out: 'output',
+    step1: (n) => `  [1/4] passCharacter len=${n}`,
+    step2: (n) => `  [2/4] extracted resources.assets from data.unity3d (${n})`,
+    step3: (g, n) => `  [3/4] GUID ${g}, ${n} labels`,
+    step3b: (t, c, sp, n) => `  [3/4] Substring=${t} (${c} calls, span 0x${sp}), split into ${n} groups`,
+    step3arek: (f, n) => `  [3/4] read ${n} passwords from ${f} (disassembly skipped)`,
+    ok: (h, label, n, how) => `  ✓ ${h}${label ? ` [${label}]` : ''} → ${n} bytes${how === 'trial' ? ' (trial match)' : ''}`,
+    skip: (h) => `  ✗ ${h}: no password yields a UnityFS header`,
+    done: (ok, skip) => `\n[4/4] decrypted ${ok}, skipped ${skip}.`,
+    arekOut: (f, n) => `  AREK.txt written to ${f} (${n} entries, plaintext passwords)`,
+    skipNote: '\nNote: the criterion is that the decrypted header must be `UnityFS`; a wrong password is skipped rather than written out as garbage.',
+    noneOk: 'Nothing decrypted — the encryptor version may have changed (e.g. salt is no longer the filename).',
+    noneOk2: 'Compare against the "Old vs. new packages" section in the README, or open an issue with the game name and version.',
+    arekStale: '  Note: passwords in AREK.txt are version-specific; from a different build, they will all fail here.',
+    noSA: 'StreamingAssets/StandaloneWindows64 not found',
+    noMD: 'global-metadata.dat not found',
+    noAssets: 'neither resources.assets nor data.unity3d found',
+    noGA: 'GameAssembly.dll not found',
+    usage: 'Usage:',
+    usageScan: '  node ika9nt-unlock.mjs scan   --game <game dir>',
+    usageUnlock: '  node ika9nt-unlock.mjs unlock --game <game dir> [--out <dir>] [--sa <StreamingAssets>] [--arek-in <path>] [--arek-out <path>]',
+    scanHead: (g) => `game dir: ${g}`,
+    scanFound: (md, ga, as) => `  metadata: ${md ? '✓' : '✗'}  GameAssembly: ${ga ? '✓' : '✗'}  resources.assets: ${as ? '✓' : '✗ (unpack first)'}`,
+    scanPool: (c, n) => `  passCharacter: ${c} candidate(s), chosen len=${n}`,
+    scanGuid: (g) => `  GUID: ${g}`,
+    apiHint: 'see the "How it works" section in the README',
+  },
+  ja: {
+    game: 'ゲーム',
+    sa: 'StreamingAssets',
+    out: '出力',
+    step1: (n) => `  [1/4] passCharacter len=${n}`,
+    step2: (n) => `  [2/4] data.unity3d から resources.assets を抽出 (${n})`,
+    step3: (g, n) => `  [3/4] GUID ${g}、${n} 個の label`,
+    step3b: (t, c, sp, n) => `  [3/4] Substring=${t}（${c} 回、跨度 0x${sp}）、${n} グループに分割`,
+    step3arek: (f, n) => `  [3/4] ${f} から ${n} 個のパスワードを読み込み（逆アセンブルを省略）`,
+    ok: (h, label, n, how) => `  ✓ ${h}${label ? ` [${label}]` : ''} → ${n} バイト${how === 'trial' ? '（試行錯誤による一致）' : ''}`,
+    skip: (h) => `  ✗ ${h}：UnityFS ヘッダになるパスワードが無い`,
+    done: (ok, skip) => `\n[4/4] 復号 ${ok} 件、スキップ ${skip} 件。`,
+    arekOut: (f, n) => `  AREK.txt を ${f} に書き出しました（${n} 件、平文パスワード）`,
+    skipNote: '\n注：判定は復号後の先頭が `UnityFS` であること。誤ったパスワードは捨てるだけで、壊れたデータは書き出さない。',
+    noneOk: '一つも復号できませんでした。暗号化ツールのバージョンが変わった可能性があります（例：salt がファイル名でなくなった）。',
+    noneOk2: 'README の「新旧パッケージの対照」と突き合わせるか、ゲーム名とバージョンを添えて issue を立ててください。',
+    arekStale: '  注意：AREK.txt のパスワードはバージョン依存です。別ビルドのものなら、ここでは全て失敗します。',
+    noSA: 'StreamingAssets/StandaloneWindows64 が見つかりません',
+    noMD: 'global-metadata.dat が見つかりません',
+    noAssets: 'resources.assets も data.unity3d も見つかりません',
+    noGA: 'GameAssembly.dll が見つかりません',
+    usage: '使い方：',
+    usageScan: '  node ika9nt-unlock.mjs scan   --game <ゲームディレクトリ>',
+    usageUnlock: '  node ika9nt-unlock.mjs unlock --game <ゲームディレクトリ> [--out <出力先>] [--sa <StreamingAssets>] [--arek-in <パス>] [--arek-out <パス>]',
+    scanHead: (g) => `ゲームディレクトリ: ${g}`,
+    scanFound: (md, ga, as) => `  metadata: ${md ? '✓' : '✗'}  GameAssembly: ${ga ? '✓' : '✗'}  resources.assets: ${as ? '✓' : '✗（先に unpack）'}`,
+    scanPool: (c, n) => `  passCharacter: 候補 ${c} 件、選択 len=${n}`,
+    scanGuid: (g) => `  GUID: ${g}`,
+    apiHint: 'README の「仕組み」を参照',
+  },
+}
+
+function detectLang(argv) {
+  const fromArg = argv.find((a, i) => a === '--lang' && argv[i + 1])
+  const explicit = fromArg ? argv[argv.indexOf(fromArg) + 1] : process.env.IKA9NT_LANG
+  const want = (explicit || process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || '').toLowerCase()
+  if (want.startsWith('ja')) return 'ja'
+  if (want.startsWith('zh')) return 'zh'
+  if (want.startsWith('en')) return 'en'
+  return 'en'   // 没有明确语言时用英文，不猜
+}
+
+let LANG = 'en'
+function t(key, ...args) {
+  const v = MESSAGES[LANG]?.[key] ?? MESSAGES.en[key]
+  return typeof v === 'function' ? v(...args) : (v ?? key)
+}
+
 // ── 基础 ────────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
@@ -419,55 +533,56 @@ function cmdScan(args) {
   const md = files.find(f => f.endsWith('global-metadata.dat'))
   const ga = files.find(f => /GameAssembly\.dll$/i.test(f))
   const assets = files.find(f => /resources\.assets$/.test(f))
-  console.log(`游戏目录: ${game}`)
-  console.log(`  metadata: ${md ? '✓' : '✗'}  GameAssembly: ${ga ? '✓' : '✗'}  resources.assets: ${assets ? '✓' : '✗ (需先 unpack)'}`)
+  console.log(t('scanHead', game))
+  console.log(t('scanFound', md, ga, assets))
   if (md) {
     const r = findPassCharacter(md)
-    console.log(`  passCharacter: 候选 ${r.candidates.length}，选中 len=${r.chosen.value.length}`)
+    console.log(t('scanPool', r.candidates.length, r.chosen.value.length))
   }
-  if (assets) console.log(`  GUID: ${findGuid(assets).guid}`)
+  if (assets) console.log(t('scanGuid', findGuid(assets).guid))
 }
 
 function cmdUnlock(args) {
   const game = args.game || '.'
   const out = args.out || path.join(game, 'decrypted')
   const saDir = args.sa || findStreamingAssets(game)
-  if (!saDir) { console.error('找不到 StreamingAssets/StandaloneWindows64'); process.exit(2) }
-  console.log(`游戏: ${game}\nStreamingAssets: ${saDir}\n输出: ${out}`)
+  if (!saDir) { console.error(t('noSA')); process.exit(2) }
+  console.log(`${t('game')}: ${game}\n${t('sa')}: ${saDir}\n${t('out')}: ${out}`)
 
   // 1. metadata → passCharacter
   const md = walk(game).find(f => f.endsWith('global-metadata.dat'))
-  if (!md) { console.error('找不到 global-metadata.dat'); process.exit(2) }
+  if (!md) { console.error(t('noMD')); process.exit(2) }
   const pc = findPassCharacter(md)
-  console.log(`  [1/4] passCharacter len=${pc.chosen.value.length}`)
+  console.log(t('step1', pc.chosen.value.length))
 
   // 2. data.unity3d → resources.assets → GUID
   let assets = walk(game).find(f => /resources\.assets$/.test(f))
   if (!assets) {
     const du = walk(game).find(f => f.endsWith('data.unity3d'))
-    if (!du) { console.error('找不到 resources.assets 也没有 data.unity3d'); process.exit(2) }
+    if (!du) { console.error(t('noAssets')); process.exit(2) }
     const tmpAssets = path.join('/tmp', `ika9nt-assets-${process.pid}.bin`)
     const r = unpackFile(du, 'resources.assets', tmpAssets)
-    console.log(`  [2/4] 从 data.unity3d 提出 resources.assets (${r.written.toLocaleString()})`)
+    console.log(t('step2', r.written.toLocaleString()))
     assets = tmpAssets
   }
   const g = findGuid(assets)
   const keyTable = findLabels(assets)
-  console.log(`  [3/4] GUID ${g.guid}，${keyTable.labels.length} 个 label`)
+  console.log(t('step3', g.guid, keyTable.labels.length))
 
   // 3. 密码：优先读 AREK.txt（省掉 41 MB 反汇编），否则从 GameAssembly 推导
   let passwords
   if (args['arek-in']) {
     const rows = readArek(args['arek-in'])
     passwords = rows.map(r => r.password)
-    console.log(`  [3/4] 从 ${args['arek-in']} 读到 ${passwords.length} 个密码（跳过反汇编）`)
+    console.log(t('step3arek', args['arek-in'], passwords.length))
+    console.log(t('arekStale'))
   } else {
     const ga = walk(game).find(f => /GameAssembly\.dll$/i.test(f))
-    if (!ga) { console.error('找不到 GameAssembly.dll'); process.exit(2) }
+    if (!ga) { console.error(t('noGA')); process.exit(2) }
     const lines = disassemble(ga)
     const sub = detectSubstring(lines)
     const blocks = extractBlocks(lines, sub.target)
-    console.log(`  [3/4] Substring=${sub.target}（${sub.count} 次，跨度 0x${sub.span.toString(16)}），切成 ${blocks.length} 组`)
+    console.log(t('step3b', sub.target, sub.count, sub.span.toString(16), blocks.length))
     passwords = blocks.map(b => passwordFromBlock(b, pc.chosen.value, g.guid))
   }
 
@@ -500,25 +615,25 @@ function cmdUnlock(args) {
     }
 
     if (!pw) {
-      console.log(`  ✗ ${f} 没有密码能解出 UnityFS 头`)
+      console.log(t('skip', f))
       skipped++
       continue
     }
     const n = decryptFile(src, path.join(out, f), pw, f)
-    console.log(`  ✓ ${f}${label ? ` [${label}]` : ''} → ${n.toLocaleString()} 字节${how === '试错' ? '（试错匹配）' : ''}`)
+    console.log(t('ok', f, label, n.toLocaleString(), how === '试错' ? 'trial' : ''))
     matched.push({ label: label ?? f, password: pw, hash: f })
     ok++
   }
-  console.log(`\n[4/4] 解出 ${ok}，跳过 ${skipped}。`)
+  console.log(t('done', ok, skipped))
   if (args['arek-out'] && matched.length) {
     const n = writeArek(args['arek-out'], matched)
-    console.log(`  AREK.txt 已写到 ${args['arek-out']}（${n} 条，含明文密码）`)
+    console.log(t('arekOut', args['arek-out'], n))
   }
   if (skipped) {
-    console.log('\n跳过说明：判据是解出来的头必须是 `UnityFS`，解错会跳过而不是产出垃圾。')
+    console.log(t('skipNote'))
     if (ok === 0) {
-      console.log('一个都没解出来，可能是加密器版本变了（例如 salt 不再等于文件名）。')
-      console.log('用 `bili article` 里那篇的说明对照一下，或到仓库开 issue 附上游戏名与版本。')
+      console.log(t('noneOk'))
+      console.log(t('noneOk2'))
     }
     process.exitCode = 1
   }
@@ -533,13 +648,14 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve
 if (!isMain) { /* 被 import 时只导出函数，不跑 CLI */ }
 else {
 const args = parseArgs(process.argv.slice(2))
+LANG = detectLang(process.argv.slice(2))
 const cmd = args._[0]
 if (cmd === 'scan') cmdScan(args)
 else if (cmd === 'unlock') cmdUnlock(args)
 else {
-  console.log('用法：')
-  console.log('  node ika9nt-unlock.mjs scan   --game <游戏目录>')
-  console.log('  node ika9nt-unlock.mjs unlock --game <游戏目录> [--out <输出>] [--sa <StreamingAssets>]')
+  console.log(t('usage'))
+  console.log(t('usageScan'))
+  console.log(t('usageUnlock'))
   process.exit(2)
 }
 }

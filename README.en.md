@@ -244,6 +244,21 @@ Stated plainly:
 
 ---
 
+## Languages
+
+Progress output follows the runtime locale: `--lang` > `IKA9NT_LANG` > system `LC_ALL`/`LC_MESSAGES`/`LANG` > English.
+
+```bash
+node ika9nt-unlock.mjs unlock --game ./GameDir --lang ja
+IKA9NT_LANG=zh node ika9nt-unlock.mjs scan --game ./GameDir
+LANG=ja_JP.UTF-8 node ika9nt-unlock.mjs unlock --game ./GameDir
+```
+
+`zh` / `en` / `ja` are supported. **Only human-facing progress text is translated** — JSON, field
+names, paths and error codes stay as-is, so scripts that parse the output are unaffected.
+
+With no explicit locale the tool uses English rather than guessing.
+
 ## Layout
 
 ```

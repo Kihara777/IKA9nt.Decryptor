@@ -228,6 +228,22 @@ hash は**そのままソルト**（`GetSalt(label)` がその文字列を返す
 
 ---
 
+## 多言語
+
+進捗出力の言語は実行環境から自動で決まります：`--lang` > `IKA9NT_LANG` > システムの
+`LC_ALL`/`LC_MESSAGES`/`LANG` > 英語。
+
+```bash
+node ika9nt-unlock.mjs unlock --game ./GameDir --lang ja
+IKA9NT_LANG=zh node ika9nt-unlock.mjs scan --game ./GameDir
+LANG=ja_JP.UTF-8 node ika9nt-unlock.mjs unlock --game ./GameDir
+```
+
+`zh` / `en` / `ja` に対応。**翻訳するのは人間向けの進捗出力のみ**で、JSON・フィールド名・
+パス・エラーコードはそのままです。出力を解析するスクリプトは言語の影響を受けません。
+
+明示的なロケールが無い場合は推測せず英語を使います。
+
 ## 構成
 
 ```
