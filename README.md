@@ -97,12 +97,46 @@ node ika9nt-unlock.mjs verify --dir <输出目录>
 | `GUID` | `resources.assets` 里 `EncrypterKeyData` 之后 512 字节内 | 恰好 1 个 32 位小写十六进制串；多一个或少一个都报错而不是取第一个 |
 | `Substring` 函数地址 | `GameAssembly.dll` 反汇编 | 被 `mov $imm,%edx` + `call` 反复调用的目标里，**次数 ≥100 且调用点跨度 <64 KB** 的那一个 → 全库唯一 |
 | 每个 bundle 的密码长度 | 上述函数的调用点之间的 `call Array::new` | 立即数即长度；实测切成 `22,23,17,31,20,26,21,26` |
+| **label → hash 对应** | `resources.assets` 里 `EncrypterKeyData` 的 `reference` 数组 | label 数组与 `(assetPath, int64 hash)` 数组**同序**，第 i 个配第 i 个 |
 | 盐 | 密文的**文件名** | 目录里匹配 `/^-?\d+$/` 的条目 |
 
 `resources.assets` 若不在磁盘上，工具会从 `data.unity3d`（UnityFS）里**流式只解开覆盖目标的那几个 block**——
 5.19 GB 的包读一次头加几次 read 就够，约 1 秒。
 
 ---
+
+## 配对：不靠试错
+
+早期版本对每个密文**逐个试**每个密码，用「解出来的头必须是 `UnityFS`」当判据。这能用，但不符合这个工具的初衷——它应该像游戏自己那样，**知道哪个密码配哪个包**。
+
+现在可以了。`EncrypterKeyData` 在 `resources.assets` 里的布局是：
+
+```
+"EncrypterKeyData"  GUID(32)  [4字节填充] [int32 N] label × N
+                              ... [int32 N] (assetPath, int64 hash) × N
+```
+
+两段数组**同序**，所以第 i 个 label 就配第 i 个 hash，`findLabels()` 把这张表读出来之后，`hash → password` 就直接查得到，解密的每一步都用「按表」而不是「试错」。
+
+实测输出会带上 label：
+
+```
+✓ -1441731759 [common]                    → 596,520,900 字节
+✓ -1651898362 [commonr18]                 → 311,181,437 字节
+✓ -167652920  [sceneresourcesextradefeat] → 676,012,998 字节
+```
+
+只有在表对不上时（label 数与密码数不等，或按表解不出 `UnityFS` 头）才退回逐个试，并且会在那一行明确标出「试错匹配」——**退路存在，但不静默**。
+
+## AREK.txt 互操作
+
+```
+--arek-out <path>   解完后写出 `label password hash`（与旧 mod 的 AREK.txt 同格式）
+--arek-in  <path>   直接读密码，跳过 41 MB 反汇编那一步
+```
+
+写出的文件**含明文密码**，权限设 600。因为 label 现在是真的，旧 mod 和编辑器插件都能直接用。
+
 
 ## 原理
 

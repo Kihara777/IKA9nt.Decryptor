@@ -102,6 +102,86 @@ export function findGuid(assetsPath, window = 512) {
   return { guid: hits[0], offset: at }
 }
 
+/**
+ * 从 resources.assets 里读出 `EncrypterKeyData` 的 label → hash 表。
+ *
+ * 布局（实测，Unity 序列化 + 无 TypeTree）：
+ *
+ *   "EncrypterKeyData"  (GUID 字符串)  labels[8]  (assetPath, int64 hash)[8]
+ *
+ * 每个元素都是普通 Unity 字符串：4 字节小端长度 + UTF-8 + 补齐到 4 字节边界。
+ * assetPath 后面紧跟小端 int64 的 hash，两段按数组序号一一对应，
+ * 所以第 i 个 label 就配第 i 个 hash —— **不用靠文件名去猜，也不需要穷举**。
+ */
+export function findLabels(assetsPath) {
+  const b = fs.readFileSync(assetsPath)
+  const guidAt = b.indexOf(Buffer.from('EncrypterKeyData', 'utf8'))
+  if (guidAt < 0) throw new Error('resources.assets 里没有 EncrypterKeyData')
+
+  const readString = (off) => {
+    if (off + 4 > b.length) return null
+    const len = b.readInt32LE(off)
+    if (len <= 0 || len > 512 || off + 4 + len > b.length) return null
+    const raw = b.subarray(off + 4, off + 4 + len)
+    for (const c of raw) if (c < 0x20 || c > 0x7e) return null
+    return { text: raw.toString('latin1'), next: (off + 4 + len + 3) & ~3 }
+  }
+
+  // 布局实测：
+  //   "EncrypterKeyData" ... GUID(32) [4字节填充] [int32 数组长度] label×N
+  //   ... [4字节填充] [int32 数组长度] (assetPath, int64 hash)×N
+  // GUID 文本本身定位最稳——类名和它之间可能有对齐填充。
+  let guid = null
+  let cur = guidAt
+  for (let i = 0; i < 8 && !guid; i++) {
+    const r = readString((cur + 3) & ~3)
+    if (r && /^[0-9a-f]{32}$/i.test(r.text)) { guid = r.text; cur = r.next; break }
+    cur += 4
+  }
+  if (!guid) throw new Error('EncrypterKeyData 之后没找到 GUID 字符串')
+
+  // GUID 之后固定 4 字节填充，再是数组长度
+  cur = (cur + 3) & ~3
+  cur += 4
+  const count = b.readInt32LE(cur)
+  cur += 4
+  if (!(count > 0 && count <= 512)) throw new Error(`label 数组长度不合理：${count}`)
+
+  const labels = []
+  for (let i = 0; i < count; i++) {
+    const r = readString(cur)
+    if (!r) throw new Error(`第 ${i} 个 label 读不出`)
+    labels.push(r.text)
+    cur = r.next
+  }
+
+  // assetPath 数组前面还夹着别的字段，长度不可靠。
+  // 改为扫描：从当前偏移向后找以 "Assets" 开头的 Unity 字符串，紧接其后的 int64 就是 hash。
+  const pairs = []
+  const limit = Math.min(b.length - 16, cur + 64 * 1024)
+  while (pairs.length < count && cur < limit) {
+    const r = readString(cur)
+    if (r && r.text.startsWith('Assets')) {
+      const hashAt = r.next
+      if (hashAt + 8 <= b.length) {
+        pairs.push({ assetPath: r.text, hash: b.readBigInt64LE(hashAt).toString() })
+        cur = hashAt + 8
+        continue
+      }
+    }
+    cur += 4
+  }
+  if (pairs.length === 0) throw new Error('没找到任何 assetPath/hash 对')
+
+  const table = {}
+  const byHash = {}
+  labels.forEach((label, i) => {
+    table[label] = pairs[i].hash
+    byHash[pairs[i].hash] = { label, assetPath: pairs[i].assetPath }
+  })
+  return { guid, labels, pairs, table, byHash }
+}
+
 // ── 三、blocks（反汇编）─────────────────────────────────────────────────────
 
 /** 跑 objdump 全量反汇编到临时文件，返回行数组。 */
@@ -293,6 +373,44 @@ export function unpackFile(archivePath, wantName, outPath) {
   } finally { fs.closeSync(fd) }
 }
 
+// ── 五·五、AREK.txt ─────────────────────────────────────────────────────────
+
+/**
+ * 读 AREK.txt：每行 `label password hash`（旧 mod 与编辑器插件共用的格式）。
+ * 只取 password 与 hash，label 忽略——本工具按密文文件名当 hash，不需要 label。
+ */
+export function readArek(file) {
+  const text = fs.readFileSync(file, 'utf8')
+  const rows = []
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim()
+    if (!t || t.startsWith('#')) continue
+    const parts = t.split(/\s+/)
+    if (parts.length < 3) continue
+    rows.push({ label: parts[0], password: parts[1], hash: parts.slice(2).join(' ') })
+  }
+  if (rows.length === 0) throw new Error(`${file} 里没读到任何 label/password/hash 行`)
+  return rows
+}
+
+/**
+ * 写 AREK.txt。格式与旧 mod 一致，但 **label 位置填的是 hash**——label 表在
+ * resources.assets 的 SerializedFile 里，本工具不解析它。写出来的文件本工具自己读得回来；
+ * 旧 mod 若按 label 索引则对不上，这一点写在文件头里。
+ * 文件含**明文密码**，这是这套工具的既有约定，权限设成 600。
+ */
+export function writeArek(file, rows) {
+  const head = [
+    '# ika9nt-unlock 生成',
+    '# 格式：label password hash（与旧 IKA9nt.Decryptor 的 AREK.txt 相同）',
+    '# 注意：label 位置填的是 hash —— label 表在本工具未解析的 SerializedFile 里。',
+    '# 本文件含明文密码。',
+  ].join('\n')
+  const body = rows.map(r => `${r.label ?? r.hash} ${r.password} ${r.hash}`).join('\n')
+  fs.writeFileSync(file, head + '\n' + body + '\n', { mode: 0o600 })
+  return rows.length
+}
+
 // ── 六、命令 ────────────────────────────────────────────────────────────────
 
 function cmdScan(args) {
@@ -334,32 +452,76 @@ function cmdUnlock(args) {
     assets = tmpAssets
   }
   const g = findGuid(assets)
-  console.log(`  [3/4] GUID ${g.guid}`)
+  const keyTable = findLabels(assets)
+  console.log(`  [3/4] GUID ${g.guid}，${keyTable.labels.length} 个 label`)
 
-  // 3. GameAssembly → blocks
-  const ga = walk(game).find(f => /GameAssembly\.dll$/i.test(f))
-  if (!ga) { console.error('找不到 GameAssembly.dll'); process.exit(2) }
-  const lines = disassemble(ga)
-  const sub = detectSubstring(lines)
-  const blocks = extractBlocks(lines, sub.target)
-  console.log(`  [3/4] Substring=${sub.target}（${sub.count} 次，跨度 0x${sub.span.toString(16)}），切成 ${blocks.length} 组`)
-  const passwords = blocks.map(b => passwordFromBlock(b, pc.chosen.value, g.guid))
+  // 3. 密码：优先读 AREK.txt（省掉 41 MB 反汇编），否则从 GameAssembly 推导
+  let passwords
+  if (args['arek-in']) {
+    const rows = readArek(args['arek-in'])
+    passwords = rows.map(r => r.password)
+    console.log(`  [3/4] 从 ${args['arek-in']} 读到 ${passwords.length} 个密码（跳过反汇编）`)
+  } else {
+    const ga = walk(game).find(f => /GameAssembly\.dll$/i.test(f))
+    if (!ga) { console.error('找不到 GameAssembly.dll'); process.exit(2) }
+    const lines = disassemble(ga)
+    const sub = detectSubstring(lines)
+    const blocks = extractBlocks(lines, sub.target)
+    console.log(`  [3/4] Substring=${sub.target}（${sub.count} 次，跨度 0x${sub.span.toString(16)}），切成 ${blocks.length} 组`)
+    passwords = blocks.map(b => passwordFromBlock(b, pc.chosen.value, g.guid))
+  }
+
+  // label 与密码的对应：KeyData 里 label 和 hash 同序，密码块按 map 写入序排列。
+  // 两段都按「第 i 个配第 i 个」对齐——这是这次不再需要穷举的关键。
+  const hashToPassword = new Map()
+  if (passwords.length === keyTable.labels.length) {
+    keyTable.labels.forEach((label, i) => {
+      hashToPassword.set(keyTable.table[label], { label, password: passwords[i] })
+    })
+  }
 
   // 4. 解密并配对
   fs.mkdirSync(out, { recursive: true })
   let ok = 0, skipped = 0
+  const matched = []   // { password, hash } —— 给 --arek-out 用
   for (const f of fs.readdirSync(saDir).filter(f => /^-?\d+$/.test(f))) {
     const src = path.join(saDir, f)
     const head = Buffer.alloc(16)
     const fd = fs.openSync(src, 'r'); fs.readSync(fd, head, 0, 16, 0); fs.closeSync(fd)
-    const pw = passwords.find(p => makeCipher(p, f)(head, 0).toString('latin1', 0, 5) === 'Unity')
-    if (!pw) { console.log(`  ✗ ${f} 无密码可解`); skipped++; continue }
+    const known = hashToPassword.get(f)
+    let pw = null, label = null, how = ''
+
+    if (known && makeCipher(known.password, f)(head, 0).toString('latin1', 0, 5) === 'Unity') {
+      pw = known.password; label = known.label; how = '按表'
+    } else {
+      // 表对不上（顺序假设不成立 / label 数不一致）时才逐个试，并明确标注
+      const alt = passwords.find(p => makeCipher(p, f)(head, 0).toString('latin1', 0, 5) === 'Unity')
+      if (alt) { pw = alt; how = '试错' }
+    }
+
+    if (!pw) {
+      console.log(`  ✗ ${f} 没有密码能解出 UnityFS 头`)
+      skipped++
+      continue
+    }
     const n = decryptFile(src, path.join(out, f), pw, f)
-    console.log(`  ✓ ${f} → ${n.toLocaleString()} 字节`)
+    console.log(`  ✓ ${f}${label ? ` [${label}]` : ''} → ${n.toLocaleString()} 字节${how === '试错' ? '（试错匹配）' : ''}`)
+    matched.push({ label: label ?? f, password: pw, hash: f })
     ok++
   }
   console.log(`\n[4/4] 解出 ${ok}，跳过 ${skipped}。`)
-  if (skipped) process.exitCode = 1
+  if (args['arek-out'] && matched.length) {
+    const n = writeArek(args['arek-out'], matched)
+    console.log(`  AREK.txt 已写到 ${args['arek-out']}（${n} 条，含明文密码）`)
+  }
+  if (skipped) {
+    console.log('\n跳过说明：判据是解出来的头必须是 `UnityFS`，解错会跳过而不是产出垃圾。')
+    if (ok === 0) {
+      console.log('一个都没解出来，可能是加密器版本变了（例如 salt 不再等于文件名）。')
+      console.log('用 `bili article` 里那篇的说明对照一下，或到仓库开 issue 附上游戏名与版本。')
+    }
+    process.exitCode = 1
+  }
 }
 
 function findStreamingAssets(game) {
@@ -367,6 +529,9 @@ function findStreamingAssets(game) {
   return hit.length ? path.dirname(hit[0]) : null
 }
 
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)
+if (!isMain) { /* 被 import 时只导出函数，不跑 CLI */ }
+else {
 const args = parseArgs(process.argv.slice(2))
 const cmd = args._[0]
 if (cmd === 'scan') cmdScan(args)
@@ -376,4 +541,5 @@ else {
   console.log('  node ika9nt-unlock.mjs scan   --game <游戏目录>')
   console.log('  node ika9nt-unlock.mjs unlock --game <游戏目录> [--out <输出>] [--sa <StreamingAssets>]')
   process.exit(2)
+}
 }
