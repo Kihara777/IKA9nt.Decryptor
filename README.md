@@ -143,6 +143,22 @@ plain[i]  = cipher[i] XOR keystream[i % 16]
 
 ---
 
+## 旧项目的 MelonMod 也支持 v2.1+
+
+`legacy/MelonMod/` 里那个注入式解密器，经过 [#3](https://github.com/Kihara777/IKA9nt.Decryptor/pull/3)（@OmaruKoma）的改动后，
+在 v2.1+ 的游戏上也能用了。和静态工具的区别在于它仍然是运行时注入，需要游戏跑得起来。
+
+v2.1 改了什么：
+
+- `PasswordMap.map` 从 **static** 变成 `EncrypterCore.passwordMap` 后面的 **instance** 属性
+- `map` 的值**不再是密码**，是原料；真密码要经 `EncrypterCore.GetPasswordFromMap(out password, label)` 推导，
+  中间经过一个 195 字符的 alphabet（`0-9a-zA-Z` + 平假名 + 片假名 + 半角片假名）
+- 盐来自 `EncrypterCore.GetSalt(label)`——实测就是 hash 的字符串形式，所以「密文文件名即盐」在 v2.1 仍然成立
+- `SeekableAesStream` 本身没变
+
+**这也是静态工具能工作的原因**：`ika9nt-unlock.mjs` 从一开始走的就是「从 `Substring` 立即数反推密码」这条路，
+那正是 v2.1 的机制，只是当时不知道它叫 v2.1。
+
 ## 目录
 
 ```
