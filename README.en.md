@@ -108,6 +108,38 @@ blocks that cover the target** — a 5.19 GB archive costs one header read plus 
 
 ---
 
+## Pairing: no brute force
+
+Earlier versions tried every password on every ciphertext, using "the decrypted header must be `UnityFS`" as the criterion. That works, but it is the opposite of what this tool is for — it should know which password opens which bundle, the way the game itself does.
+
+Now it can. `EncrypterKeyData` in `resources.assets` holds:
+
+```
+"EncrypterKeyData"  GUID(32)  [4-byte pad] [int32 N] label x N
+                              [int32 N]    (assetPath, int64 hash) x N
+```
+
+The two arrays are in the **same order**, so label *i* pairs with hash *i*. `findLabels()` reads that table, `hash -> password` becomes a lookup, and every decryption is by table rather than by trial.
+
+The label shows up in the output:
+
+```
+✓ -1441731759 [common]                    → 596,520,900 bytes
+✓ -1651898362 [commonr18]                 → 311,181,437 bytes
+✓ -167652920  [sceneresourcesextradefeat] → 676,012,998 bytes
+```
+
+Only when the table does not line up (label count ≠ password count, or the table-derived password fails the `UnityFS` check) does it fall back to trying each password — and that line is marked `试错匹配` (trial match). **The fallback exists, but it is never silent.**
+
+## AREK.txt interop
+
+```
+--arek-out <path>   write `label password hash` after decrypting (same format as the old mod)
+--arek-in  <path>   read passwords from it and skip the 41 MB disassembly step
+```
+
+The file contains **plaintext passwords** and is written with mode 600. Labels are now genuine, so the old mod and the editor plugin can consume it directly.
+
 ## How it works
 
 Encryption lives in `SeekableAesStream` — a **random-access AES-CTR**:
