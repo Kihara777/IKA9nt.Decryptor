@@ -1,8 +1,11 @@
 # ika9nt-unlock
 
+**中文** ｜ [English](README.en.md) ｜ [日本語](README.ja.md)
+
+
 静态解密 **IKA9nt.Encrypter** 加密的 Unity AssetBundle，不运行游戏、不注入、不改主程序。
 
-上游那个 MelonLoader mod（见 [`legacy/`](legacy/)）的工作方式是**运行时**挂钩：注入游戏、拦下解密调用、把密码
+旧项目里那个 MelonLoader mod（见 [`legacy/`](legacy/)）的工作方式是**运行时**挂钩：注入游戏、拦下解密调用、把密码
 连同 `AREK.txt` 一起写到磁盘。它对 Unity 版本、IL2CPP 后端、注入器都敏感——游戏一更新就容易失效。
 
 这个工具走另一条路：**所有需要的东西都在产物里，静态读出来就能算**。
@@ -144,11 +147,11 @@ plain[i]  = cipher[i] XOR keystream[i % 16]
 
 ```
 ika9nt-unlock.mjs      工具本体（零第三方依赖）
-legacy/                上游 Kihara777/IKA9nt.Decryptor 的原始内容，仅作参考
+legacy/                旧版本（运行时注入式）的原始内容，仅作参考
   Editor/              运行时解密用的 Unity 编辑器脚本
   MelonMod/            MelonLoader 注入式解密器
-  README.upstream.md   上游 README（含 AREK.txt 格式说明）
-  LICENSE.upstream    上游许可证
+  README.previous.md   旧版 README（含 AREK.txt 格式说明）
+  LICENSE.previous    旧版许可证
 ```
 
 `legacy/` 里的东西**不再维护**，保留它是因为它是理解 `SeekableAesStream` 实现的原始出处。
@@ -157,4 +160,4 @@ legacy/                上游 Kihara777/IKA9nt.Decryptor 的原始内容，仅�
 
 ## 许可证
 
-见 [`LICENSE`](LICENSE)。上游部分（`legacy/`）的许可证见 [`legacy/LICENSE.upstream`](legacy/LICENSE.upstream)。
+见 [`LICENSE`](LICENSE)。旧项目部分（`legacy/`）的许可证见 [`legacy/LICENSE.previous`](legacy/LICENSE.previous)。
