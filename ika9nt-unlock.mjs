@@ -463,7 +463,7 @@ export function unpackFile(archivePath, wantName, outPath) {
     }
     const target = files.find(f => f.name === wantName) || files.find(f => f.name.includes(wantName))
     if (!target) throw new Error(`目录里没有 ${wantName}`)
-    const dataStart = ((q + csize) + 15) & ~15
+    const dataStart = q + csize   // blocksInfo 后直接是 block 数据，不再额外对齐
     const tStart = target.off, tEnd = target.off + target.sz
     const out = fs.openSync(outPath, 'w')
     let pos = 0, done = 0, readPos = dataStart
