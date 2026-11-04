@@ -157,6 +157,75 @@ So the immediates of the `Substring(i)` calls, the character pool, and the GUID 
 
 ---
 
+## Old vs. new packages (from a historical AREK)
+
+This repository has a commit from 2024-12-01, `4daf548 "Delete encrypt keys"`, which removed an
+`AidealRays.txt` — the AREK of that build. It listed **5** packages; the current `EncrypterKeyData`
+lists **8**. Putting three sources side by side (old AREK, current KeyData, metadata literals) shows
+how each package moved between versions:
+
+```
+label                       metadata  KeyData  old AREK
+common                         yes      yes       -
+commonr18                      yes      yes       -
+sceneresourcesbattle           yes      yes      yes
+sceneresourcesevent            yes      yes      yes
+sceneresourcesevent2            -        -       yes    <- old AREK only
+sceneresourcesextra            yes      yes       -
+sceneresourcesextradefeat      yes      yes       -
+sceneresourcestitle            yes      yes      yes
+sceneresourcestop              yes      yes      yes
+sceneresourcestopextra         yes       -        -     <- code only
+```
+
+### Shared
+
+**The hashes are stable.** All four packages present in both versions keep the same hash:
+
+```
+sceneresourcesevent     -1190579293
+sceneresourcesbattle     -330351619
+sceneresourcestitle       66086011
+sceneresourcestop       1712697374
+```
+
+The hash *is* the salt (`GetSalt(label)` returns it as a string), so salt derivation is stable
+across versions.
+
+### Different
+
+**1. Passwords are not version-stable.** Decrypting a current ciphertext with an old AREK password
+produces garbage:
+
+```
+sceneresourcesbattle   "!suR|..."    not UnityFS
+sceneresourcestitle    ",,x«}0A..."  not UnityFS
+sceneresourcestop      "j3V3EAAWUl"  not UnityFS
+```
+
+So passwords read via `--arek-in` are valid **only for the build they came from**.
+
+**2. Coverage grew.** The 2024-12 build encrypted 5 packages; the current one encrypts 8 —
+`common`, `commonr18`, `sceneresourcesextra` and `sceneresourcesextradefeat` were added later.
+
+**3. One package left the base install.** `sceneresourcesevent` had a password in the old AREK,
+so it shipped with the game back then. It still has a KeyData entry and `level2` still references
+it, but there is no file in `StreamingAssets`. Per the Encrypter manual's DLC section ("asset bundles
+that are to be made into DLC are also output to StreamingAssets, so the target asset bundle must not
+be included in the game before or after the build"), such packages are **excluded on purpose**,
+not forgotten by the packer.
+
+**4. One label exists only in code.** `sceneresourcestopextra` appears in the metadata literals but
+in neither KeyData nor the old AREK, and has no file. It is either a leftover reference or part of a
+disabled feature — **there is no evidence either way yet**.
+
+### What this means for the tool
+
+- Passwords from `--arek-in` are version-specific; when decryption fails, suspect a stale AREK
+  before suspecting the derivation.
+- "How many decrypted" must not be a hard-coded number. Compare the **KeyData declaration count**
+  against the **actual file count** in `StreamingAssets`; the difference is what is genuinely missing.
+
 ## Limits
 
 Stated plainly:

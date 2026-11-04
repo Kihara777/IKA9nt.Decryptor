@@ -154,6 +154,66 @@ plain[i]  = cipher[i] XOR keystream[i % 16]
 
 ---
 
+## 新旧パッケージの対照（過去の AREK から）
+
+このリポジトリには 2024-12-01 のコミット `4daf548 "Delete encrypt keys"` があり、当時の AREK である
+`AidealRays.txt` を削除している。それは **5 件**、現在の `EncrypterKeyData` は **8 件**。
+三つの出所（旧 AREK・現在の KeyData・metadata の文字列リテラル）を並べると、各パッケージが
+バージョン間でどう動いたかが見える：
+
+```
+label                       metadata  KeyData  旧AREK
+common                         ○        ○        -
+commonr18                      ○        ○        -
+sceneresourcesbattle           ○        ○        ○
+sceneresourcesevent            ○        ○        ○
+sceneresourcesevent2           -        -        ○    ← 旧 AREK のみ
+sceneresourcesextra            ○        ○        -
+sceneresourcesextradefeat      ○        ○        -
+sceneresourcestitle            ○        ○        ○
+sceneresourcestop              ○        ○        ○
+sceneresourcestopextra         ○        -        -     ← コードのみ
+```
+
+### 共通点
+
+**hash は変わらない。** 両方に存在する 4 件は、新旧で hash が完全に一致する：
+
+```
+sceneresourcesevent     -1190579293
+sceneresourcesbattle     -330351619
+sceneresourcestitle       66086011
+sceneresourcestop       1712697374
+```
+
+hash は**そのままソルト**（`GetSalt(label)` がその文字列を返す）なので、ソルトの生成方法は
+バージョン間で安定している。
+
+### 相違点
+
+**1. パスワードはバージョンに依存する。** 旧 AREK のパスワードで現在の暗号文を復号すると
+意味のないバイト列になる。したがって `--arek-in` で読んだパスワードは**そのビルド限り**で有効。
+
+**2. 暗号化の範囲が広がった。** 2024-12 は 5 件、現在は 8 件。`common`、`commonr18`、
+`sceneresourcesextra`、`sceneresourcesextradefeat` は後から加わったもの。
+
+**3. 本体から外れたパッケージがある。** `sceneresourcesevent` は旧 AREK にパスワードがあり、
+当時は本体に同梱されていた。現在も KeyData に宣言があり `level2` から参照されているが、
+`StreamingAssets` にファイルが無い。Encrypter のマニュアルの DLC の節（DLC にする
+アセットバンドルも StreamingAssets に出力されるため、対象のバンドルはビルド前後に
+ゲームへ含めてはならない）にあるとおり、これは**意図的な除外**であって梱包漏れではない。
+
+**4. コードにしか存在しない label がある。** `sceneresourcestopextra` は metadata の文字列
+リテラルにあるが KeyData にも旧 AREK にも無く、ファイルも無い。残骸か、無効化された機能の
+一部か——**現時点でどちらかを示す証拠は無い**。
+
+### ツールへの影響
+
+- `--arek-in` のパスワードはバージョン依存。復号に失敗したら、導出の誤りより先に AREK の
+  期限切れを疑うこと。
+- 「いくつ復号できたか」を固定値にしてはいけない。**KeyData の宣言数**と
+  **`StreamingAssets` の実ファイル数**を比べ、その差が本当に欠けているもの。
+
 ## 限界
 
 はっきり書きます：

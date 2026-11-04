@@ -155,6 +155,71 @@ plain[i]  = cipher[i] XOR keystream[i % 16]
 
 ---
 
+## 新旧加密包的对照（据 2024-12 的历史 AREK）
+
+这个仓库在 2024-12-01 有一笔提交 `4daf548 "Delete encrypt keys"`，删掉过一份 `AidealRays.txt`。
+那份文件是当时版本的 AREK，只有 **5 条**；当前 KeyData 是 **8 条**。把三方（旧 AREK、当前 KeyData、
+metadata 字面量）摆在一起看，能看出几个包在版本之间的位置变化：
+
+```
+label                       metadata  KeyData  旧AREK
+common                         ✓        ✓       ·
+commonr18                      ✓        ✓       ·
+sceneresourcesbattle           ✓        ✓       ✓
+sceneresourcesevent            ✓        ✓       ✓
+sceneresourcesevent2           ·        ·       ✓    ← 只在旧 AREK
+sceneresourcesextra            ✓        ✓       ·
+sceneresourcesextradefeat      ✓        ✓       ·
+sceneresourcestitle            ✓        ✓       ✓
+sceneresourcestop              ✓        ✓       ✓
+sceneresourcestopextra         ✓        ·       ·    ← 只在代码里
+```
+
+### 共同点
+
+**hash 没变。** 四个跨版本都存在的包，hash 在新旧两边完全一致：
+
+```
+sceneresourcesevent     -1190579293
+sceneresourcesbattle     -330351619
+sceneresourcestitle       66086011
+sceneresourcestop       1712697374
+```
+
+hash 就是**盐**（`GetSalt(label)` 返回它的字符串形式），所以盐的生成方式在各版本间是稳定的。
+
+### 不同点
+
+**一、密码不是版本稳定的。** 拿旧 AREK 里的密码去解当前版本的密文，解出来是乱码：
+
+```
+sceneresourcesbattle   "!sùR|..."   ❌ 不是 UnityFS
+sceneresourcestitle    ",,x«}0Á..." ❌
+sceneresourcestop      "j3V3ÈÀWÙl..." ❌
+```
+
+所以 `--arek-in` 读进来的密码**只在它自己那一版有效**，跨版本就得重新推导。
+
+**二、加密覆盖的范围在扩大。** 2024-12 只加密了 5 个（四个 scene 包 + Event），
+现在 8 个——`common`、`commonr18`、`sceneresourcesextra`、`sceneresourcesextradefeat`
+都是后来纳入的。旧版的 `common` 系列当时应该是未加密的。
+
+**三、有包被移出本体。** `sceneresourcesevent` 在旧 AREK 里有密码，说明当年它随本体发布；
+现在它有 KeyData 声明、`level2` 也引用它，但 `StreamingAssets` 里没有文件。
+按 Encrypter 手册的 DLC 章节（"asset bundles that are to be made into DLC are also output to
+StreamingAssets, so the target asset bundle must not be included in the game before or after the
+build"），这类包是**构建时就有意排除**的，不是漏打。
+
+**四、有个 label 只活在代码里。** `sceneresourcestopextra` 出现在 metadata 字面量中，
+但既不在 KeyData、也不在旧 AREK，`StreamingAssets` 里自然也没有。它要么是遗留引用，
+要么属于一个未启用的功能——**目前没有任何证据能区分这两种可能**。
+
+### 对工具的影响
+
+- `--arek-in` 读到的密码是**版本相关**的；解不出来时优先怀疑 AREK 过期，而不是密码推导错了。
+- 判断「解出几个算正常」不能写死数字，要拿 **KeyData 声明的条数** 和 **`StreamingAssets` 实有文件数** 对比，
+  两者的差额才是真正缺失的包。
+
 ## 边界
 
 说清楚它做不到什么：
