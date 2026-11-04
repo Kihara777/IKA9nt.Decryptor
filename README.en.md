@@ -17,15 +17,15 @@ StreamingAssets: ./AldealRays_R18/AldealRays_R18_Data/StreamingAssets/Standalone
 output: ./decrypted
   [1/4] passCharacter len=195
   [2/4] extracted resources.assets from data.unity3d (12,801,040)
-  [3/4] GUID 050b90b4462e4391b531c9f6a36b8051
+  [3/4] GUID 050b90b4462e4391b531c9f6a36b8051, 8 labels
   [3/4] Substring=0x181178e90 (186 calls, span 0x2242), split into 8 groups
-  ✓ -1441731759 → 596,520,900 bytes
-  ✓ -1651898362 → 311,181,437 bytes
-  ✓ -167652920 → 676,012,998 bytes
-  ✓ -330351619 → 804,643,058 bytes
-  ✓ 1208925433 → 515,373,584 bytes
-  ✓ 1712697374 → 238,200,537 bytes
-  ✓ 66086011 → 60,597,830 bytes
+  ✓ -1441731759 [common]                    →  596,520,900 bytes
+  ✓ -1651898362 [commonr18]                 →  311,181,437 bytes
+  ✓ -167652920  [sceneresourcesextradefeat] →  676,012,998 bytes
+  ✓ -330351619  [sceneresourcesbattle]      →  804,643,058 bytes
+  ✓ 1208925433  [sceneresourcesextra]       →  515,373,584 bytes
+  ✓ 1712697374  [sceneresourcestop]         →  238,200,537 bytes
+  ✓ 66086011    [sceneresourcestitle]       →   60,597,830 bytes
 
 [4/4] decrypted 7, skipped 0.
 ```
@@ -92,7 +92,7 @@ Checks the `UnityFS` header of every plaintext file.
 
 ## How the inputs are found
 
-This is what separates the tool from a script that makes you paste parameters: **all four inputs carry their
+This is what separates the tool from a script that makes you paste parameters: **all six inputs carry their
 own criteria.**
 
 | Input | Source | Criterion (a criterion, not a description — it can fail) |
@@ -120,14 +120,6 @@ Now it can. `EncrypterKeyData` in `resources.assets` holds:
 ```
 
 The two arrays are in the **same order**, so label *i* pairs with hash *i*. `findLabels()` reads that table, `hash -> password` becomes a lookup, and every decryption is by table rather than by trial.
-
-The label shows up in the output:
-
-```
-✓ -1441731759 [common]                    → 596,520,900 bytes
-✓ -1651898362 [commonr18]                 → 311,181,437 bytes
-✓ -167652920  [sceneresourcesextradefeat] → 676,012,998 bytes
-```
 
 Only when the table does not line up (label count ≠ password count, or the table-derived password fails the `UnityFS` check) does it fall back to trying each password — and that line is marked `试错匹配` (trial match). **The fallback exists, but it is never silent.**
 
@@ -169,7 +161,7 @@ So the immediates of the `Substring(i)` calls, the character pool, and the GUID 
 
 Stated plainly:
 
-- **Handles IKA9nt.Encrypter only.** A different encryption scheme invalidates all three criteria; the tool
+- **Handles IKA9nt.Encrypter only.** A different encryption scheme invalidates all of them; the tool
   errors out rather than silently producing garbage.
 - **Requires `objdump`.** `unlock` disassembles a 41 MB `GameAssembly.dll` (about 6 seconds). `scan` does not.
 - **Assumes `EncrypterKeyData` exists.** If the game never shipped a key resource, `findGuid` fails loudly.

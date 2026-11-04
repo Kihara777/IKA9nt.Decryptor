@@ -17,15 +17,15 @@ StreamingAssets: ./AldealRays_R18/AldealRays_R18_Data/StreamingAssets/Standalone
 输出: ./decrypted
   [1/4] passCharacter len=195
   [2/4] 从 data.unity3d 提出 resources.assets (12,801,040)
-  [3/4] GUID 050b90b4462e4391b531c9f6a36b8051
+  [3/4] GUID 050b90b4462e4391b531c9f6a36b8051，8 个 label
   [3/4] Substring=0x181178e90（186 次，跨度 0x2242），切成 8 组
-  ✓ -1441731759 → 596,520,900 字节
-  ✓ -1651898362 → 311,181,437 字节
-  ✓ -167652920 → 676,012,998 字节
-  ✓ -330351619 → 804,643,058 字节
-  ✓ 1208925433 → 515,373,584 字节
-  ✓ 1712697374 → 238,200,537 字节
-  ✓ 66086011 → 60,597,830 字节
+  ✓ -1441731759 [common]                    →  596,520,900 字节
+  ✓ -1651898362 [commonr18]                 →  311,181,437 字节
+  ✓ -167652920  [sceneresourcesextradefeat] →  676,012,998 字节
+  ✓ -330351619  [sceneresourcesbattle]      →  804,643,058 字节
+  ✓ 1208925433  [sceneresourcesextra]       →  515,373,584 字节
+  ✓ 1712697374  [sceneresourcestop]         →  238,200,537 字节
+  ✓ 66086011    [sceneresourcestitle]       →   60,597,830 字节
 
 [4/4] 解出 7，跳过 0。
 ```
@@ -89,7 +89,7 @@ node ika9nt-unlock.mjs verify --dir <输出目录>
 
 ## 依赖是怎么被自动找到的
 
-这是这个工具和「需要人喂参数的脚本」的区别：**四样输入全部自带判据**。
+这是这个工具和「需要人喂参数的脚本」的区别：**六样输入全部自带判据**。
 
 | 需要 | 来自 | 判据（判据本身会翻脸，不是描述） |
 |---|---|---|
@@ -117,14 +117,6 @@ node ika9nt-unlock.mjs verify --dir <输出目录>
 ```
 
 两段数组**同序**，所以第 i 个 label 就配第 i 个 hash，`findLabels()` 把这张表读出来之后，`hash → password` 就直接查得到，解密的每一步都用「按表」而不是「试错」。
-
-实测输出会带上 label：
-
-```
-✓ -1441731759 [common]                    → 596,520,900 字节
-✓ -1651898362 [commonr18]                 → 311,181,437 字节
-✓ -167652920  [sceneresourcesextradefeat] → 676,012,998 字节
-```
 
 只有在表对不上时（label 数与密码数不等，或按表解不出 `UnityFS` 头）才退回逐个试，并且会在那一行明确标出「试错匹配」——**退路存在，但不静默**。
 
@@ -167,7 +159,7 @@ plain[i]  = cipher[i] XOR keystream[i % 16]
 
 说清楚它做不到什么：
 
-- **只处理 IKA9nt.Encrypter**。换一个加密方案，那三条判据全部不成立，工具会报错退出，不会静默解出错东西。
+- **只处理 IKA9nt.Encrypter**。换一个加密方案，那几样判据全部不成立，工具会报错退出，不会静默解出错东西。
 - **需要 `objdump`**。`unlock` 那一步要反汇编 41 MB 的 `GameAssembly.dll`（约 6 秒）。`scan` 不需要。
 - **假设 `EncrypterKeyData` 存在**。如果游戏根本没生成密钥资源，`findGuid` 会明确报错。
 - **不解 UnityFS 内部**。输出的 `UnityFS` 是标准格式，里面的 SerializedFile / Texture2D 要用别的东西读（AssetStudio、UABEA 等）。
